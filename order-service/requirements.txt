@@ -1,1 +1,1 @@
-Flask==3.1.0\nrequests==2.32.3\nprometheus-flask-exporter==0.23.2\n
+Flask==3.1.0 prometheus-flask-exporter==0.23.2
