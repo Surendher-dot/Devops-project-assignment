@@ -1,5 +1,7 @@
 pipeline {
-    agent any
+    agent {
+        label 'aws-ec2'
+    }
     environment {
         COMPOSE_PROJECT_NAME = 'microservices-devops'
     }
