@@ -16,6 +16,7 @@ pipeline {
         ECR_REGISTRY = '762052017474.dkr.ecr.us-east-1.amazonaws.com'
 
         COMPOSE_PROJECT_NAME = 'devops-project-assignment'
+        DEPLOY_DIR = '/home/ec2-user/Devops-project-assignment'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
     }
 
@@ -96,6 +97,8 @@ pipeline {
             steps {
                 sh '''
                     set -eu
+
+                    cd "$DEPLOY_DIR"
 
                     echo "Deploying image tag: $IMAGE_TAG"
 
@@ -178,7 +181,7 @@ pipeline {
 
     post {
         always {
-            sh 'docker-compose ps || true'
+            sh 'cd /home/ec2-user/Devops-project-assignment && docker-compose ps || true'
         }
 
         success {
