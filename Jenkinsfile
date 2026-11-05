@@ -1,4 +1,4 @@
-```groovy
+   groovy
 pipeline {
     agent {
         label 'aws-ec2'
@@ -73,4 +73,4 @@ pipeline {
         }
     }
 }
-```
+
