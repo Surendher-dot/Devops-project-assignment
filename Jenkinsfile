@@ -181,7 +181,7 @@ pipeline {
 
     post {
         always {
-            sh 'cd /home/ec2-user/Devops-project-assignment && docker-compose ps || true'
+            echo 'Pipeline execution finished.'
         }
 
         success {
