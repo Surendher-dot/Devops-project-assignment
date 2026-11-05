@@ -1,4 +1,4 @@
-```yaml
+  yaml
 services:
   user-service:
     image: 762052017474.dkr.ecr.us-east-1.amazonaws.com/user-service:ci-jenkins-5
@@ -103,4 +103,4 @@ networks:
 volumes:
   prometheus-data:
   grafana-data:
-```
+
