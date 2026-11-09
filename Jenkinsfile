@@ -1,4 +1,3 @@
-
 pipeline {
     agent {
         label 'aws-ec2'
@@ -18,9 +17,13 @@ pipeline {
         COMPOSE_PROJECT_NAME = 'devops-project-assignment'
         DEPLOY_DIR = '/home/ec2-user/Devops-project-assignment'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
+
+        PREVIOUS_IMAGE_TAG = ''
+        DEPLOYMENT_ATTEMPTED = 'false'
     }
 
     stages {
+
         stage('Checkout') {
             steps {
                 checkout scm
@@ -72,6 +75,46 @@ pipeline {
             }
         }
 
+        stage('Capture Previous Deployment') {
+            steps {
+                script {
+                    env.PREVIOUS_IMAGE_TAG = sh(
+                        returnStdout: true,
+                        script: '''
+                            set -eu
+
+                            cd "$DEPLOY_DIR"
+
+                            user_image=$(docker inspect --format='{{.Config.Image}}' user-service)
+                            product_image=$(docker inspect --format='{{.Config.Image}}' product-service)
+                            order_image=$(docker inspect --format='{{.Config.Image}}' order-service)
+
+                            user_tag="${user_image##*:}"
+                            product_tag="${product_image##*:}"
+                            order_tag="${order_image##*:}"
+
+                            if [ "$user_tag" != "$product_tag" ] || [ "$user_tag" != "$order_tag" ]; then
+                                echo "ERROR: Services are not using the same image tag" >&2
+                                exit 1
+                            fi
+
+                            case "$user_tag" in
+                                build-*) ;;
+                                *)
+                                    echo "ERROR: Invalid previous image tag: $user_tag" >&2
+                                    exit 1
+                                    ;;
+                            esac
+
+                            printf '%s\\n' "$user_tag"
+                        '''
+                    ).trim()
+
+                    echo "Previous deployment: ${env.PREVIOUS_IMAGE_TAG}"
+                }
+            }
+        }
+
         stage('Build and Push Docker Images') {
             steps {
                 sh '''
@@ -106,6 +149,20 @@ pipeline {
                         user-service \
                         product-service \
                         order-service
+
+                    echo "All new images pulled successfully"
+                '''
+
+                script {
+                    env.DEPLOYMENT_ATTEMPTED = 'true'
+                }
+
+                sh '''
+                    set -eu
+
+                    cd "$DEPLOY_DIR"
+
+                    echo "Starting deployment..."
 
                     docker-compose up -d --no-deps \
                         user-service \
@@ -189,7 +246,97 @@ pipeline {
         }
 
         failure {
-            echo 'CI/CD FAILED. Check the stage logs and service health.'
+            echo 'CI/CD FAILED. Starting automatic rollback.'
+
+            script {
+                if (env.DEPLOYMENT_ATTEMPTED == 'true' &&
+                    env.PREVIOUS_IMAGE_TAG?.trim()) {
+
+                    echo "Rolling back to ${env.PREVIOUS_IMAGE_TAG}"
+
+                    try {
+                        withEnv(["IMAGE_TAG=${env.PREVIOUS_IMAGE_TAG}"]) {
+                            sh '''
+                                set -eu
+
+                                cd "$DEPLOY_DIR"
+
+                                echo "Pulling previous application images..."
+
+                                docker-compose pull \
+                                    user-service \
+                                    product-service \
+                                    order-service
+
+                                echo "Restoring previous application version..."
+
+                                docker-compose up -d --no-deps \
+                                    user-service \
+                                    product-service \
+                                    order-service
+
+                                echo "Checking restored services..."
+
+                                for service in user-service product-service order-service
+                                do
+                                    container_id="$(docker-compose ps -q "$service")"
+
+                                    if [ -z "$container_id" ]; then
+                                        echo "ERROR: $service container not found"
+                                        exit 1
+                                    fi
+
+                                    status=""
+
+                                    for attempt in $(seq 1 30)
+                                    do
+                                        status="$(docker inspect \
+                                            --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+                                            "$container_id")"
+
+                                        echo "$service: $status"
+
+                                        if [ "$status" = "healthy" ]; then
+                                            break
+                                        fi
+
+                                        if [ "$status" = "unhealthy" ] || [ "$status" = "exited" ]; then
+                                            docker logs "$container_id"
+                                            exit 1
+                                        fi
+
+                                        sleep 5
+                                    done
+
+                                    if [ "$status" != "healthy" ]; then
+                                        echo "ERROR: $service rollback health check failed"
+                                        docker logs "$container_id"
+                                        exit 1
+                                    fi
+                                done
+
+                                echo "Testing restored application..."
+
+                                curl -fsS http://localhost/health
+                                curl -fsS http://localhost/api/users
+                                curl -fsS http://localhost/api/products
+                                curl -fsS http://localhost/api/orders
+
+                                echo "Rollback verification successful"
+                            '''
+                        }
+
+                        echo "ROLLBACK SUCCESSFUL: ${env.PREVIOUS_IMAGE_TAG} restored."
+
+                    } catch (rollbackError) {
+                        echo "ROLLBACK FAILED: ${rollbackError}"
+                        currentBuild.result = 'FAILURE'
+                    }
+
+                } else {
+                    echo 'Rollback skipped: deployment was not attempted or previous tag was not captured.'
+                }
+            }
         }
     }
 }
