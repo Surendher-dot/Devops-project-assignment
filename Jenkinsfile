@@ -260,8 +260,7 @@ pipeline {
             echo 'CI/CD FAILED. Starting automatic rollback.'
 
             script {
-                if (env.DEPLOYMENT_ATTEMPTED == 'true' &&
-                    env.PREVIOUS_IMAGE_TAG?.trim()) {
+                if (env.PREVIOUS_IMAGE_TAG?.trim()) {
 
                     echo "Rolling back to ${env.PREVIOUS_IMAGE_TAG}"
 
