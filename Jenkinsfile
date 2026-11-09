@@ -236,8 +236,10 @@ pipeline {
                     curl -fsS http://localhost/api/orders
 
                     echo "Testing Prometheus..."
-
                     curl -fsS http://localhost:9090/-/healthy
+
+                    echo "Testing rollback trigger..."
+                    curl -fsS http://localhost:9999/rollback-test
 
                     echo "All smoke tests passed"
                 '''
