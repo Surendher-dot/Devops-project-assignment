@@ -18,7 +18,7 @@ pipeline {
         DEPLOY_DIR = '/home/ec2-user/Devops-project-assignment'
         IMAGE_TAG = "build-${BUILD_NUMBER}"
 
-        PREVIOUS_IMAGE_TAG = ''
+
         DEPLOYMENT_ATTEMPTED = 'false'
     }
 
@@ -75,10 +75,11 @@ pipeline {
             }
         }
 
+
         stage('Capture Previous Deployment') {
             steps {
                 script {
-                    env.PREVIOUS_IMAGE_TAG = sh(
+                    def capturedTag = sh(
                         returnStdout: true,
                         script: '''
                             set -eu
@@ -106,14 +107,22 @@ pipeline {
                                     ;;
                             esac
 
-                            printf '%s\\n' "$user_tag"
+                            printf '%s\n' "$user_tag"
                         '''
                     ).trim()
 
-                    echo "Previous deployment: ${env.PREVIOUS_IMAGE_TAG}"
+                    if (!capturedTag || !capturedTag.startsWith('build-')) {
+                        error("Could not capture a valid previous deployment tag: ${capturedTag}")
+                    }
+
+                    env.PREVIOUS_IMAGE_TAG = capturedTag
+
+                    echo "Captured previous deployment: ${capturedTag}"
+                    echo "Rollback environment variable: ${env.PREVIOUS_IMAGE_TAG}"
                 }
             }
         }
+
 
         stage('Build and Push Docker Images') {
             steps {
